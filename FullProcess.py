@@ -16,8 +16,7 @@ np.set_printoptions(threshold=1000)
 
 
 def median_pixel_value():
-    # using loaded video determine median pixel values
-    # To prevent ludicrous array sizes, median calculated in batches, and then median of the batches calculated
+    # To prevent ludicrous array sizes, median calculated in batches. Median of batches calculated
     print('\nDetermining Median Values\n')
     if not os.path.exists('Files/PixelAverages/'.format(videoname)): os.makedirs('Files/PixelAverages/'.format(videoname))
     selectedframes = np.zeros(framesconsidered)
@@ -55,12 +54,11 @@ def identifyboxes(medianvalues):
         ret, frame = boxcreatecapture.read()
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).flatten()
 
-        # Longest running time 0.85
+        #Compare Pixel Value to Threshold. (Longest running time 0.85)
         thresholdvalues = (medianvalues - gray)
         for i, j in enumerate(thresholdvalues):
             if abs(thresholdvalues[i]) > threshold: gray[i] = 255       #pixel threshold
             else: gray[i] = 0
-        ###
 
         gray = gray.reshape(height, width)
         blurred = cv2.GaussianBlur(gray, (11, 11), 0)
@@ -70,7 +68,7 @@ def identifyboxes(medianvalues):
         labels = measure.label(thresh, neighbors=8, background=0)
         mask = np.zeros(thresh.shape, dtype="uint8")
 
-        # 2nd Longest Running time 0.27
+        # Determining Contours.  2nd Longest Running time 0.27
         for label in np.unique(labels):
              if label == 0: continue
              labelMask = np.zeros(thresh.shape, dtype="uint8")
@@ -83,14 +81,15 @@ def identifyboxes(medianvalues):
         cnts = cnts[0] if imutils.is_cv2() else cnts[1]
         cnts = contours.sort_contours(cnts)[0]
 
+        # Create Square around Contours
         for (i, c) in enumerate(cnts):
-            (x, y, w, h) = cv2.boundingRect(c)
+            (x, y, w, h) = cv2.boundingRect(c)              
             newsquare = np.array([x - squaresize, y - squaresize, x + w + squaresize, y + h + squaresize], ndmin=2)
             if i == 0: squarestorage = newsquare
             else: squarestorage = np.vstack((squarestorage, newsquare))
 
+        # Create Adjacency Matrix
         intersectiongraph = np.zeros((len(squarestorage), len(squarestorage)))
-
         for i in range(0, len(squarestorage)):
             for j in range(0, len(squarestorage)):
                 if i == j: intersectiongraph[i, j] = 0
@@ -99,11 +98,13 @@ def identifyboxes(medianvalues):
                     intersectiongraph[i, j] = 0
                 else: intersectiongraph[i, j] = 1
 
+        # Determine Strongly Connected Components
         uniquesquares = np.array([scipy.sparse.csgraph.connected_components(intersectiongraph, directed=False, connection='weak', return_labels = True)[1]])
         squarestorage = np.concatenate((uniquesquares.T, squarestorage), axis=1)
         squarestorage = squarestorage[np.argsort(squarestorage[:, 0])]
         finalsquares = np.zeros((np.max(uniquesquares), 5))
 
+        # Determine Min/Max of SCCs
         newsquareiter = 0
         squarecount = 0
         for i, j in enumerate(squarestorage):
@@ -143,6 +144,7 @@ def boxpixeldata(boxdata):
     roiw, roih = uniformboxsize, uniformboxsize
     finalsquarearray = np.zeros([roiw * roih])
 
+    # Resize Boxes a place in Array for Unsupervised Learning
     for framenum in tqdm.trange(0, maxnumframes):
         newframecounter = 0
         ret, frame = capture.read()
@@ -232,6 +234,7 @@ def ConvNet(boxdata):
     convroiw, convroih = IMG_SIZE, IMG_SIZE
     boxcounter = 0
 
+    # Classify Boxes
     for framenum in tqdm.trange(0, maxnumframes):
         ret, frame = capture.read()
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
